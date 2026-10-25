@@ -30,6 +30,7 @@ export class GameScreen {
   private readonly input: Input;
   private readonly hud: Hud;
   private readonly endOverlay: HTMLDivElement;
+  private readonly banner: HTMLDivElement;
   private frame = 0;
   private lastFrameAt = performance.now();
   private flippedFor = -1;
@@ -52,9 +53,11 @@ export class GameScreen {
     });
     this.hud = new Hud(this.root, GAME, session, this.input);
 
+    this.banner = document.createElement("div");
+    this.banner.className = "banner hidden";
     this.endOverlay = document.createElement("div");
     this.endOverlay.className = "overlay hidden";
-    this.root.append(this.endOverlay);
+    this.root.append(this.banner, this.endOverlay);
 
     window.addEventListener("resize", this.resize);
     this.resize();
@@ -123,6 +126,14 @@ export class GameScreen {
     this.feedback.draw(ctx, this.camera, now);
     this.canvas.style.cursor = this.input.attackMoveArmed ? "crosshair" : "default";
     this.hud.update(view);
+
+    const alert = this.session.alert?.() ?? null;
+    if (alert) {
+      if (this.banner.textContent !== alert) this.banner.textContent = alert;
+      this.banner.classList.remove("hidden");
+    } else {
+      this.banner.classList.add("hidden");
+    }
 
     if (view.status === "ended" && !this.ended) {
       this.ended = true;

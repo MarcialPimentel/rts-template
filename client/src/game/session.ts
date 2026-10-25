@@ -16,6 +16,8 @@ export interface Session {
   pendingTrains(buildingId: number): number;
   /** Optional status line for the HUD (e.g. ping or room code). */
   status(): string;
+  /** A message for the banner at the top of the screen (e.g. opponent disconnected), if any. */
+  alert?(): string | null;
   /** Sandbox only: switch which player this screen controls. */
   switchPlayer?(): void;
   /** Called by the screen when it closes. */
