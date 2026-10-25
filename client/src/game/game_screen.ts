@@ -1,6 +1,7 @@
 import { GAME } from "../../../shared/data";
 import type { ViewState } from "../../../shared/view";
 import { Camera } from "./camera";
+import { Feedback } from "./feedback";
 import { Hud } from "./hud";
 import { Input, type FeedbackKind } from "./input";
 import { renderWorld } from "./render";
@@ -14,10 +15,6 @@ export interface EndAction {
 export interface GameScreenOptions {
   /** Buttons shown on the victory/defeat screen. */
   endActions: EndAction[];
-  /** Hook for instant command feedback (markers, sound). */
-  onCommand?: (kind: FeedbackKind, at: { x: number; y: number } | null) => void;
-  /** Extra drawing on top of the world each frame (e.g. feedback markers). */
-  drawOverlay?: (ctx: CanvasRenderingContext2D, camera: Camera, nowMs: number) => void;
 }
 
 const HUD_TOP = 40;
@@ -29,6 +26,7 @@ export class GameScreen {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly camera = new Camera(GAME);
+  private readonly feedback = new Feedback();
   private readonly input: Input;
   private readonly hud: Hud;
   private readonly endOverlay: HTMLDivElement;
@@ -50,7 +48,7 @@ export class GameScreen {
     this.ctx = this.canvas.getContext("2d")!;
 
     this.input = new Input(this.canvas, this.camera, session, GAME, {
-      onCommand: (kind, at) => options.onCommand?.(kind, at),
+      onCommand: (kind: FeedbackKind, at) => this.feedback.onCommand(kind, at),
     });
     this.hud = new Hud(this.root, GAME, session, this.input);
 
@@ -122,7 +120,7 @@ export class GameScreen {
       selection: this.input.selection,
       dragBox: this.input.dragBox,
     });
-    this.options.drawOverlay?.(ctx, this.camera, now);
+    this.feedback.draw(ctx, this.camera, now);
     this.canvas.style.cursor = this.input.attackMoveArmed ? "crosshair" : "default";
     this.hud.update(view);
 
