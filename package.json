@@ -1,0 +1,34 @@
+{
+  "name": "rts-template",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Minimal two-player online browser RTS, used as a template for future RTS games.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "tsx watch server/src/index.ts",
+    "dev:client": "vite client",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "vite build client",
+    "build:server": "node scripts/build-server.mjs",
+    "start:server": "node server/dist/index.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/ws": "^8.18.2",
+    "concurrently": "^10.0.6",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}
