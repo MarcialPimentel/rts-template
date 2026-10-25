@@ -1,18 +1,13 @@
-import { createServer } from "node:http";
 import { BUILD_ID } from "./build";
+import { startServer } from "./server";
 
 const port = Number(process.env.PORT ?? 8080);
 
-const server = createServer((req, res) => {
-  if (req.url === "/healthz") {
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ ok: true, build: BUILD_ID }));
-    return;
-  }
-  res.writeHead(404);
-  res.end();
-});
+const server = await startServer({ port, log: true });
+console.log(`RTS server build ${BUILD_ID} listening on :${server.port}`);
 
-server.listen(port, () => {
-  console.log(`RTS server build ${BUILD_ID} listening on :${port}`);
-});
+const shutdown = () => {
+  void server.close().then(() => process.exit(0));
+};
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
