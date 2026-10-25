@@ -1,4 +1,5 @@
 import type { CompiledGame } from "../../data";
+import { formationOffset } from "../geometry";
 import type { Entity, World } from "../world";
 import { MAX_UNITS_PER_COMMAND } from "./types";
 
@@ -35,6 +36,27 @@ export function ownedProducer(
   const def = game.defs[e.type];
   if (!def || def.produces.length === 0) return null;
   return e;
+}
+
+/**
+ * Spreads a group's destination into formation slots around the clicked point, so units
+ * don't all fight over one spot. Returns one point per unit id, clamped to the map.
+ */
+export function groupDestinations(
+  world: World,
+  units: number[],
+  x: number,
+  y: number,
+  game: CompiledGame,
+): { x: number; y: number }[] {
+  let spacing = 0;
+  for (const id of units) {
+    spacing = Math.max(spacing, game.defs[world.entities[id]!.type]!.radius * 2.6);
+  }
+  return units.map((_, slot) => {
+    const { dx, dy } = formationOffset(slot, spacing);
+    return clampToMap(x + dx, y + dy, game);
+  });
 }
 
 export function clampToMap(x: number, y: number, game: CompiledGame): { x: number; y: number } {
