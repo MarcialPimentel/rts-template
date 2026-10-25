@@ -97,6 +97,28 @@ describe("game server", () => {
     expect(after.players[1]!.gold).toBeGreaterThanOrEqual(150);
   });
 
+  it("a dropped player forfeits after the grace period", async () => {
+    const { a, b } = await startMatch();
+    b.close();
+    expect(await a.waitFor("opponent_disconnected")).toEqual({
+      t: "opponent_disconnected",
+      forfeitInMs: 400,
+    });
+    expect(await a.waitFor("match_end")).toEqual({ t: "match_end", winner: 0, reason: "forfeit" });
+    const last = await a.waitFor("snapshot", (m) => m.s.st === 1);
+    expect(last.s.w).toBe(0);
+  });
+
+  it("leaving mid-match forfeits immediately", async () => {
+    const { a, b } = await startMatch();
+    await b.waitFor("snapshot");
+    const started = performance.now();
+    b.send({ t: "leave" });
+    expect(await a.waitFor("match_end")).toEqual({ t: "match_end", winner: 0, reason: "forfeit" });
+    expect(performance.now() - started).toBeLessThan(300);
+    expect(a.inbox.some((m) => m.t === "opponent_disconnected")).toBe(false);
+  });
+
   it("answers pings", async () => {
     const c = await connect();
     c.send({ t: "ping", id: 77 });

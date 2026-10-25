@@ -93,7 +93,7 @@ export function startServer(options: ServerOptions): Promise<RunningServer> {
             // Rematches arrive in M5 (#25).
             break;
           case "leave":
-            manager.leave(c, now);
+            manager.leave(c, now, true);
             break;
         }
       },

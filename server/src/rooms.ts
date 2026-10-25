@@ -85,13 +85,18 @@ export class Room {
     return slot;
   }
 
-  /** A player leaves or their connection closes. */
-  leave(conn: Connection, now: number): void {
+  /**
+   * A player leaves (`voluntary`, e.g. "Back to menu") or their connection drops. Mid-match, leaving
+   * forfeits at once; a dropped connection gets the grace period first.
+   */
+  leave(conn: Connection, now: number, voluntary = false): void {
     const slot = this.slotOf(conn);
     if (slot === -1) return;
     this.slots[slot] = null;
 
-    if (this.phase === "playing") {
+    if (this.phase === "playing" && voluntary) {
+      if (this.world) forfeit(this.world, slot);
+    } else if (this.phase === "playing") {
       this.forfeitAt[slot] = now + this.timings.forfeitMs;
       this.send(1 - slot, { t: "opponent_disconnected", forfeitInMs: this.timings.forfeitMs });
     } else if (this.phase === "countdown") {
@@ -226,11 +231,11 @@ export class RoomManager {
     return room;
   }
 
-  leave(conn: Connection, now: number): void {
+  leave(conn: Connection, now: number, voluntary = false): void {
     const room = this.roomOf.get(conn.id);
     if (!room) return;
     this.roomOf.delete(conn.id);
-    room.leave(conn, now);
+    room.leave(conn, now, voluntary);
   }
 
   roomFor(conn: Connection): Room | undefined {

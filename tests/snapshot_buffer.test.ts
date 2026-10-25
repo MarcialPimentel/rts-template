@@ -32,13 +32,20 @@ describe("SnapshotBuffer", () => {
     for (let i = 1; i < xs.length; i++) expect(xs[i]!).toBeGreaterThanOrEqual(xs[i - 1]!);
   });
 
-  it("ignores duplicate or out-of-order snapshots and holds the newest when starved", () => {
+  it("ignores out-of-order snapshots and holds the newest when starved", () => {
     const buf = new SnapshotBuffer(100);
     buf.push(view(10, 100), 1000);
     buf.push(view(11, 110), 1050);
     buf.push(view(10, 999), 1060);
     expect(buf.latest()!.tick).toBe(11);
     expect(buf.sample(5000)!.entities[0]!.x).toBe(110);
+  });
+
+  it("takes a resent snapshot for the same tick (a forfeit ends the match without a new tick)", () => {
+    const buf = new SnapshotBuffer(100);
+    buf.push(view(10, 100), 1000);
+    buf.push({ ...view(10, 100), status: "ended", winner: 0 }, 1010);
+    expect(buf.sample(5000)!.status).toBe("ended");
   });
 
   it("returns null before any snapshot", () => {

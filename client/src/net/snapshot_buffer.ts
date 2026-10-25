@@ -19,7 +19,12 @@ export class SnapshotBuffer {
 
   push(view: ViewState, receivedAtMs: number): void {
     const last = this.snaps.at(-1);
-    if (last && view.tick <= last.tick) return; // late or duplicate
+    if (last && view.tick < last.tick) return; // arrived out of order
+    if (last && view.tick === last.tick) {
+      // Same tick sent again with newer information (e.g. the match ended by forfeit).
+      last.view = view;
+      return;
+    }
     this.snaps.push({ tick: view.tick, view });
     if (this.snaps.length > KEEP) this.snaps.shift();
 
