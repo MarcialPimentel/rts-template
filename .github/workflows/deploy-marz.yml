@@ -1,0 +1,61 @@
+name: Deploy client to marz.gg
+
+# Uploads the web client to SiteGround (marz.gg/games/rts) on every push to main.
+# The game server stays on Render. Skips quietly until the SiteGround secrets are set:
+#   SITEGROUND_HOST     server hostname from Site Tools > Devs > SSH Keys Manager > SSH Credentials
+#   SITEGROUND_USER     SSH username from the same screen
+#   SITEGROUND_SSH_KEY  private key whose public half is imported in SSH Keys Manager (no passphrase)
+#   SITEGROUND_PATH     folder to publish into, e.g. www/marz.gg/public_html/games/rts
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-marz
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HAS_SECRETS: ${{ secrets.SITEGROUND_HOST != '' && secrets.SITEGROUND_SSH_KEY != '' }}
+    steps:
+      - name: Check configuration
+        if: env.HAS_SECRETS != 'true'
+        run: echo "::notice::SiteGround secrets not set yet; skipping the marz.gg deploy."
+
+      - uses: actions/checkout@v4
+        if: env.HAS_SECRETS == 'true'
+
+      - uses: actions/setup-node@v4
+        if: env.HAS_SECRETS == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Build client
+        if: env.HAS_SECRETS == 'true'
+        run: |
+          npm ci
+          npm run build:client
+        env:
+          # Same single server-address value as the Render client (GDD rule).
+          VITE_SERVER_URL: wss://rts-template-server.onrender.com
+
+      - name: Upload to SiteGround
+        if: env.HAS_SECRETS == 'true'
+        env:
+          SG_HOST: ${{ secrets.SITEGROUND_HOST }}
+          SG_USER: ${{ secrets.SITEGROUND_USER }}
+          SG_KEY: ${{ secrets.SITEGROUND_SSH_KEY }}
+          SG_PATH: ${{ secrets.SITEGROUND_PATH }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SG_KEY" > ~/.ssh/siteground
+          chmod 600 ~/.ssh/siteground
+          SSH="ssh -i $HOME/.ssh/siteground -p 18765 -o StrictHostKeyChecking=accept-new"
+          $SSH "$SG_USER@$SG_HOST" "mkdir -p '$SG_PATH'"
+          rsync -az --delete -e "$SSH" client/dist/ "$SG_USER@$SG_HOST:$SG_PATH/"
+          echo "::notice::Published to $SG_PATH"

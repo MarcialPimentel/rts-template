@@ -234,7 +234,8 @@ Both pieces deploy from `render.yaml` on every push to `main`: the client as a f
 
 | Piece | PoC host | Notes |
 | --- | --- | --- |
-| Web client | Render static site (`rts-template-client`) | Loads instantly even while the server sleeps, so the wake screen can show. marz.gg can link to or embed it later |
+| Web client | marz.gg/games/rts (SiteGround), published by `.github/workflows/deploy-marz.yml` on every push | Static files, so it loads instantly even while the server sleeps. Needs the four `SITEGROUND_*` repository secrets; skips until they're set |
+| Web client (mirror) | Render static site (`rts-template-client`) | Same build; handy if marz.gg is down |
 | Game server | Render free web service (`rts-template-server`) | Sleeps after 15 minutes idle; waking takes about a minute |
 | Fallback server | Own PC plus a free tunnel, or a ~$5/month VPS | `deploy/Dockerfile`; only the server URL changes |
 
@@ -302,6 +303,7 @@ Record every change to a Core rule here, newest first, with the reason.
 
 | Date | Decision | Reason |
 | --- | --- | --- |
+| 2026-10-25 | Client also published to marz.gg/games/rts from GitHub Actions over SSH; asset paths are relative so one build works at a root or in a subfolder | Wanted the game on the owner's own domain; the server stays on Render because shared hosting can't run it |
 | 2026-10-25 | Ready-up lobby with colour choice; players keep their own colour on both screens (was: local player always blue, opponent red); rooms return to the lobby after a match instead of a separate rematch step | Playtest feedback: seeing your own colour swapped on the other screen was confusing, and a lobby before the match was wanted |
 | 2026-10-25 | Leaving mid-match forfeits immediately; only dropped connections get the 30 s grace period | Nobody should wait 30 s for a player who chose to leave |
 | 2026-10-25 | Compact snapshot encoding plus WebSocket compression | Render's free tier has a small monthly bandwidth allowance |
