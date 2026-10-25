@@ -4,8 +4,10 @@ name: Deploy client to marz.gg
 # The game server stays on Render. Skips quietly until the SiteGround secrets are set:
 #   SITEGROUND_HOST     server hostname from Site Tools > Devs > SSH Keys Manager > SSH Credentials
 #   SITEGROUND_USER     SSH username from the same screen
-#   SITEGROUND_SSH_KEY  private key whose public half is imported in SSH Keys Manager (no passphrase)
+#   SITEGROUND_SSH_KEY  private key from SSH Keys Manager (Create, then the key's ⋮ > Private Key)
 #   SITEGROUND_PATH     folder to publish into, e.g. www/marz.gg/public_html/games/rts
+# Optional:
+#   SITEGROUND_KEY_PASSWORD  the key's password, if it has one
 
 on:
   push:
@@ -51,10 +53,15 @@ jobs:
           SG_USER: ${{ secrets.SITEGROUND_USER }}
           SG_KEY: ${{ secrets.SITEGROUND_SSH_KEY }}
           SG_PATH: ${{ secrets.SITEGROUND_PATH }}
+          SG_KEY_PASSWORD: ${{ secrets.SITEGROUND_KEY_PASSWORD }}
         run: |
           mkdir -p ~/.ssh
           printf '%s\n' "$SG_KEY" > ~/.ssh/siteground
           chmod 600 ~/.ssh/siteground
+          # Remove the key's password on this throwaway runner so ssh and rsync can use it.
+          if [ -n "$SG_KEY_PASSWORD" ]; then
+            ssh-keygen -p -q -P "$SG_KEY_PASSWORD" -N "" -f ~/.ssh/siteground
+          fi
           SSH="ssh -i $HOME/.ssh/siteground -p 18765 -o StrictHostKeyChecking=accept-new"
           $SSH "$SG_USER@$SG_HOST" "mkdir -p '$SG_PATH'"
           rsync -az --delete -e "$SSH" client/dist/ "$SG_USER@$SG_HOST:$SG_PATH/"
