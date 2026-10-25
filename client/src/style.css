@@ -1,0 +1,262 @@
+:root {
+  --bg: #0b0f0a;
+  --panel: rgba(12, 17, 14, 0.92);
+  --line: rgba(255, 255, 255, 0.12);
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --blue: #3b82f6;
+  --red: #ef4444;
+  --gold: #facc15;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: #1e293b;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) {
+  background: #273449;
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+button.primary {
+  background: var(--blue);
+  border-color: var(--blue);
+}
+button.armed {
+  border-color: var(--red);
+  color: #fecaca;
+}
+
+input {
+  font: inherit;
+  color: var(--text);
+  background: #0f172a;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+/* Menu, lobby and status screens */
+.menu {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  text-align: center;
+}
+.menu h1 {
+  margin: 0;
+  font-size: 40px;
+  letter-spacing: 0.02em;
+}
+.menu .tagline {
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+.menu .buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(320px, 100%);
+}
+.menu .row {
+  display: flex;
+  gap: 8px;
+}
+.menu .row input {
+  flex: 1;
+  min-width: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+}
+.menu .code {
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+  color: var(--gold);
+}
+.menu .error {
+  color: #fca5a5;
+  min-height: 1.2em;
+  margin: 0;
+}
+.build {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--line);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* In-match */
+.game {
+  position: fixed;
+  inset: 0;
+}
+.game canvas {
+  display: block;
+}
+.hud-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 0 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+.hud-gold {
+  color: var(--gold);
+  font-weight: 600;
+}
+.hud-status {
+  flex: 1;
+  color: var(--muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.hud-build {
+  color: var(--muted);
+  font-size: 12px;
+}
+.hud-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 96px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+.hud-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.hud-panel .title {
+  font-weight: 600;
+}
+.hud-panel .hint {
+  color: var(--muted);
+  font-size: 13px;
+}
+.queue {
+  display: flex;
+  gap: 4px;
+}
+.slot {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.slot.filled {
+  background: rgba(59, 130, 246, 0.35);
+}
+.slot.filled i {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--gold);
+}
+.slot.pending {
+  background: rgba(148, 163, 184, 0.25);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+.overlay.hidden {
+  display: none;
+}
+.overlay .card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 24px 32px;
+  text-align: center;
+  min-width: 280px;
+}
+.overlay h2 {
+  margin: 0 0 8px;
+  font-size: 34px;
+}
+.overlay h2.win {
+  color: #86efac;
+}
+.overlay h2.lose {
+  color: #fca5a5;
+}
+.overlay .actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 16px;
+}
+.banner {
+  position: absolute;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: rgba(127, 29, 29, 0.9);
+  border: 1px solid var(--red);
+  font-weight: 600;
+}
+.banner.hidden {
+  display: none;
+}
