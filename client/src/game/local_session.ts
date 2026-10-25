@@ -4,6 +4,7 @@ import { TICK_MS } from "../../../shared/sim/constants";
 import { step } from "../../../shared/sim/step";
 import { createWorld, type World } from "../../../shared/sim/world";
 import { interpolateView, worldToView, type ViewState } from "../../../shared/view";
+import { DEFAULT_COLORS } from "../../../shared/lobby";
 import type { Session } from "./session";
 
 /**
@@ -12,6 +13,7 @@ import type { Session } from "./session";
  */
 export class LocalSession implements Session {
   localPlayer = 0;
+  readonly colors = DEFAULT_COLORS;
   private world: World = createWorld(GAME);
   private queue: PlayerCommand[] = [];
   private prev: ViewState;

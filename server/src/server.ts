@@ -89,8 +89,11 @@ export function startServer(options: ServerOptions): Promise<RunningServer> {
           case "ping":
             c.send({ t: "pong", id: message.id });
             break;
-          case "rematch":
-            manager.roomFor(c)?.requestRematch(c, now);
+          case "set_color":
+            manager.roomFor(c)?.setColor(c, message.color, now);
+            break;
+          case "set_ready":
+            manager.roomFor(c)?.setReady(c, message.ready, now);
             break;
           case "leave":
             manager.leave(c, now, true);

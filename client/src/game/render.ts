@@ -5,6 +5,8 @@ import { COLORS, teamColor } from "./colors";
 
 export interface RenderOptions {
   localPlayer: number;
+  /** Colour index per player, from the lobby. */
+  colors: readonly number[];
   selection: ReadonlySet<number>;
   /** Selection box in screen pixels while dragging. */
   dragBox: { x0: number; y0: number; x1: number; y1: number } | null;
@@ -113,7 +115,7 @@ function drawEntity(
   if (!def) return;
   const p = camera.toScreen(e.x, e.y);
   const r = def.radius * camera.scale;
-  const color = teamColor(e.owner, opts.localPlayer);
+  const color = teamColor(e.owner, opts.colors);
   const selected = opts.selection.has(e.id);
 
   if (selected) {

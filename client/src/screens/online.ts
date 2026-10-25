@@ -1,3 +1,4 @@
+import { PLAYER_COLORS } from "../../../shared/lobby";
 import { ROOM_CODE_LENGTH, type ServerMessage } from "../../../shared/protocol";
 import { serverHttpUrl, serverUrl } from "../config";
 import { GameScreen } from "../game/game_screen";
@@ -21,9 +22,12 @@ export interface OnlineOptions {
   onExit(): void;
 }
 
+type RoomMessage = Extract<ServerMessage, { t: "room" }>;
+
 /**
- * The online flow: connect → online menu (create or join) → waiting room with the code →
- * countdown → match. Owns the connection and routes server messages to whichever screen is open.
+ * The online flow: connect → online menu (create or join) → lobby (pick colours, ready up) →
+ * countdown → match → back to the lobby. Owns the connection and routes server messages to
+ * whichever screen is open.
  */
 export class OnlineController {
   private conn: Connection | null = null;
@@ -129,7 +133,7 @@ export class OnlineController {
         this.showOnlineMenu(m.message);
         break;
       case "match_start":
-        this.startGame(m.you, m.typeIds);
+        this.startGame(m.you, m.typeIds, m.colors);
         break;
       case "room_closed":
         this.showOnlineMenu("The room was closed.");
@@ -138,6 +142,8 @@ export class OnlineController {
   }
 
   private roomCode = "";
+  /** The latest lobby state, so "Back to lobby" after a match can redraw it. */
+  private lastRoom: RoomMessage | null = null;
 
   private showOnlineMenu(error = ""): void {
     this.show(`
@@ -169,11 +175,72 @@ export class OnlineController {
     this.conn?.send({ t: "join_room", code: clean });
   }
 
-  private showRoom(m: Extract<ServerMessage, { t: "room" }>): void {
+  /** The lobby: room code and invite link, both players with their colours, Ready, countdown. */
+  private showRoom(m: RoomMessage): void {
     this.roomCode = m.code;
-    if (m.phase === "countdown") {
+    this.lastRoom = m;
+    if (m.phase === "playing") return;
+    const link = `${location.origin}${location.pathname}?join=${m.code}`;
+    const me = m.you;
+    const opponent = 1 - me;
+    const counting = m.phase === "countdown";
+
+    const card = (slot: number) => {
+      const color = PLAYER_COLORS[m.colors[slot] ?? slot]!;
+      const here = m.connected[slot];
+      const status = !here ? "Waiting for a player…" : m.ready[slot] ? "Ready" : "Not ready";
+      return `
+        <div class="player-card ${here ? "" : "empty"} ${m.ready[slot] ? "is-ready" : ""}" style="--pc:${color.fill}">
+          <span class="swatch"></span>
+          <div>
+            <div class="title">Player ${slot + 1}${slot === me ? " (you)" : ""}</div>
+            <div class="status">${here ? `${color.name} · ` : ""}${status}</div>
+          </div>
+        </div>`;
+    };
+
+    const swatches = PLAYER_COLORS.map((c, i) => {
+      const takenByOpponent = m.connected[opponent] && m.colors[opponent] === i;
+      const mine = m.colors[me] === i;
+      return `<button class="color-pick ${mine ? "selected" : ""}" data-color="${i}" title="${c.name}" style="--pc:${c.fill}" ${takenByOpponent || counting ? "disabled" : ""}></button>`;
+    }).join("");
+
+    const bothHere = m.connected.every(Boolean);
+    const hint = counting
+      ? `<p class="countdown" data-field="count"></p>`
+      : !bothHere
+        ? `<p>Share the code or invite link with your opponent.</p>`
+        : m.ready[me]
+          ? `<p>Waiting for your opponent to press Ready…</p>`
+          : `<p>Press Ready when you're set. The match starts when both players are ready.</p>`;
+
+    this.show(`
+      <h1>Lobby</h1>
+      <p class="code">${m.code}</p>
+      <div class="buttons"><button data-action="copy">Copy invite link</button></div>
+      <div class="players">${card(0)}${card(1)}</div>
+      <div class="colors"><span>Your colour</span>${swatches}</div>
+      ${hint}
+      <div class="buttons">
+        <button class="${m.ready[me] ? "" : "primary"}" data-action="ready">${m.ready[me] ? (counting ? "Cancel" : "Not ready") : "Ready"}</button>
+        <button data-action="leave">Leave room</button>
+      </div>`);
+
+    this.on("copy", (button) => {
+      void navigator.clipboard?.writeText(link).then(() => (button.textContent = "Link copied"));
+    });
+    this.on("ready", () => this.conn?.send({ t: "set_ready", ready: !m.ready[me] }));
+    this.on("leave", () => {
+      this.conn?.send({ t: "leave" });
+      this.lastRoom = null;
+      this.showOnlineMenu();
+    });
+    for (const b of this.screen!.querySelectorAll<HTMLButtonElement>(".color-pick")) {
+      b.addEventListener("click", () => this.conn?.send({ t: "set_color", color: Number(b.dataset.color) }));
+    }
+
+    if (counting) {
       const endsAt = performance.now() + (m.startsInMs ?? 0);
-      this.show(`<h1>Opponent found</h1><p class="code">${m.code}</p><p data-field="count"></p>`);
       const update = () => {
         const s = Math.max(1, Math.ceil((endsAt - performance.now()) / 1000));
         const el = this.screen?.querySelector('[data-field="count"]');
@@ -181,65 +248,44 @@ export class OnlineController {
       };
       update();
       this.screenTimer = window.setInterval(update, 100);
-      return;
     }
-    if (m.phase !== "waiting") return;
-    const link = `${location.origin}${location.pathname}?join=${m.code}`;
-    this.show(`
-      <h1>Waiting for an opponent</h1>
-      <p>Share this room code:</p>
-      <p class="code">${m.code}</p>
-      <div class="buttons">
-        <button data-action="copy">Copy invite link</button>
-        <button data-action="cancel">Cancel</button>
-      </div>
-      <p class="build">${escapeHtml(link)}</p>`);
-    this.on("copy", (button) => {
-      void navigator.clipboard?.writeText(link).then(() => (button.textContent = "Link copied"));
-    });
-    this.on("cancel", () => {
-      this.conn?.send({ t: "leave" });
-      this.showOnlineMenu();
-    });
   }
 
-  private startGame(you: number, typeIds: string[]): void {
+  private startGame(you: number, typeIds: string[], colors: number[]): void {
     if (!this.conn) return;
     window.clearInterval(this.screenTimer);
     this.screen?.remove();
     this.screen = null;
-    this.session = new OnlineSession(this.conn, you, typeIds, this.roomCode);
+    this.session = new OnlineSession(this.conn, you, typeIds, colors, this.roomCode);
     this.game = new GameScreen(this.opts.container, this.session, {
       endActions: [
-        { label: "Rematch", run: () => this.requestRematch() },
-        { label: "Back to menu", run: () => this.leaveToMenu() },
+        { label: "Back to lobby", run: () => this.backToLobby() },
+        { label: "Leave room", run: () => this.leaveToMenu() },
       ],
     });
   }
 
-  private requestRematch(): void {
-    this.conn?.send({ t: "rematch" });
-    this.game?.setEndNote("Waiting for your opponent…");
+  /** After a match: close the game screen and show the lobby for another round. */
+  private backToLobby(): void {
+    this.game?.dispose(); // also disposes the session
+    this.game = null;
+    this.session = null;
+    if (this.lastRoom) this.showRoom(this.lastRoom);
+    else this.showOnlineMenu();
   }
 
-  /** After a match: show rematch status, and switch to the countdown once both players agree. */
-  private onRoomDuringGame(m: Extract<ServerMessage, { t: "room" }>): void {
-    if (m.phase === "countdown") {
-      this.game?.dispose(); // also disposes the session
-      this.game = null;
-      this.session = null;
-      this.showRoom(m);
-      return;
-    }
-    if (m.phase !== "ended" || !this.game) return;
+  /** Lobby updates that arrive while the result screen is still open. */
+  private onRoomDuringGame(m: RoomMessage): void {
+    this.lastRoom = m;
+    if (m.phase !== "waiting" || !this.game) return;
     const opponent = 1 - m.you;
     if (!m.connected[opponent]) this.game.setEndNote("Your opponent left the room.");
-    else if (m.rematch[m.you]) this.game.setEndNote("Waiting for your opponent…");
-    else if (m.rematch[opponent]) this.game.setEndNote("Your opponent wants a rematch!");
+    else if (m.ready[opponent]) this.game.setEndNote("Your opponent is ready for another round.");
   }
 
   private leaveToMenu(): void {
     this.conn?.send({ t: "leave" });
+    this.lastRoom = null;
     this.game?.dispose(); // also disposes the session
     this.game = null;
     this.session = null;

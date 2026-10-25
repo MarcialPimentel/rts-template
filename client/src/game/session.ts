@@ -8,6 +8,8 @@ import type { ViewState } from "../../../shared/view";
 export interface Session {
   /** Which player this screen controls. Can change in the sandbox. */
   readonly localPlayer: number;
+  /** Colour index per player (into PLAYER_COLORS). */
+  readonly colors: readonly number[];
   /** Sends a command. The game never changes state directly. */
   send(command: Command): void;
   /** The world to draw right now (interpolated), or null before the first state arrives. */

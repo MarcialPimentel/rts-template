@@ -36,6 +36,9 @@ async function startMatch() {
   a.send({ t: "create_room" });
   const room = await a.waitFor("room");
   b.send({ t: "join_room", code: room.code.toLowerCase() });
+  await b.waitFor("room");
+  a.send({ t: "set_ready", ready: true });
+  b.send({ t: "set_ready", ready: true });
   const [startA, startB] = await Promise.all([a.waitFor("match_start"), b.waitFor("match_start")]);
   return { a, b, code: room.code, startA, startB };
 }

@@ -28,6 +28,7 @@ export class OnlineSession implements Session {
     private readonly conn: Connection,
     you: number,
     private readonly typeIds: string[],
+    readonly colors: readonly number[],
     readonly roomCode: string,
   ) {
     this.localPlayer = you;

@@ -56,6 +56,8 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage('{"t":"create_room"}')).toEqual({ t: "create_room" });
     expect(parseClientMessage({ t: "join_room", code: " abcd " })).toEqual({ t: "join_room", code: "ABCD" });
     expect(parseClientMessage({ t: "ping", id: 3 })).toEqual({ t: "ping", id: 3 });
+    expect(parseClientMessage({ t: "set_color", color: 2 })).toEqual({ t: "set_color", color: 2 });
+    expect(parseClientMessage({ t: "set_ready", ready: true })).toEqual({ t: "set_ready", ready: true });
     expect(
       parseClientMessage({ t: "command", seq: 1, cmd: { type: "stop", units: [4] }, player: 1 }),
     ).toEqual({ t: "command", seq: 1, cmd: { type: "stop", units: [4] } });
@@ -69,6 +71,8 @@ describe("parseClientMessage", () => {
       { t: "command", seq: -1, cmd: { type: "stop", units: [1] } },
       { t: "command", seq: 1, cmd: { type: "nuke" } },
       { t: "teleport" },
+      { t: "set_color", color: "red" },
+      { t: "set_ready", ready: "yes" },
       "x".repeat(9000),
     ]) {
       expect(parseClientMessage(bad)).toBeNull();

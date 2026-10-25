@@ -11,14 +11,16 @@ export const ROOM_CODE_LENGTH = 4;
 /** Letters that can't be confused with each other or with digits. */
 export const ROOM_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ";
 
-export type RoomPhase = "waiting" | "countdown" | "playing" | "ended";
+/** `waiting` is the lobby: players join, pick colours and ready up. It returns there after each match. */
+export type RoomPhase = "waiting" | "countdown" | "playing";
 
 export type ClientMessage =
   | { t: "create_room" }
   | { t: "join_room"; code: string }
   | { t: "command"; seq: number; cmd: Command }
   | { t: "ping"; id: number }
-  | { t: "rematch" }
+  | { t: "set_color"; color: number }
+  | { t: "set_ready"; ready: boolean }
   | { t: "leave" };
 
 export type ErrorCode = "room_not_found" | "room_full" | "bad_message" | "not_in_room";
@@ -35,11 +37,13 @@ export type ServerMessage =
       connected: boolean[];
       /** Milliseconds until the match starts, during the countdown. */
       startsInMs: number | null;
-      /** Which players asked for a rematch, after a match. */
-      rematch: boolean[];
+      /** Colour index (into PLAYER_COLORS) per slot. */
+      colors: number[];
+      /** Which players have pressed Ready. The match starts when both have. */
+      ready: boolean[];
     }
   | { t: "error"; code: ErrorCode; message: string }
-  | { t: "match_start"; you: number; typeIds: string[] }
+  | { t: "match_start"; you: number; typeIds: string[]; colors: number[] }
   | { t: "snapshot"; s: EncodedSnapshot }
   | { t: "match_end"; winner: number | null; reason: string | null }
   | { t: "opponent_disconnected"; forfeitInMs: number }
@@ -150,9 +154,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
   const m = data as Record<string, unknown>;
   switch (m.t) {
     case "create_room":
-    case "rematch":
     case "leave":
       return { t: m.t };
+    case "set_color":
+      return Number.isInteger(m.color) ? { t: "set_color", color: m.color as number } : null;
+    case "set_ready":
+      return typeof m.ready === "boolean" ? { t: "set_ready", ready: m.ready } : null;
     case "join_room": {
       if (typeof m.code !== "string") return null;
       const code = m.code.trim().toUpperCase();

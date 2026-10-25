@@ -21,6 +21,15 @@ class FakeConn implements Connection {
   }
 }
 
+/** Creates a room with two players who are both ready, so the match starts after the countdown. */
+function startedRoom(m: RoomManager, a: FakeConn, b: FakeConn) {
+  const room = m.create(a, 0);
+  m.join(b, room.code, 0);
+  room.setReady(a, true, 0);
+  room.setReady(b, true, 0);
+  return room;
+}
+
 /** Ticks the manager every 50 ms from `from` for `ms` milliseconds; returns the new time. */
 function advance(manager: RoomManager, from: number, ms: number): number {
   let now = from;
@@ -40,7 +49,7 @@ describe("RoomManager", () => {
     for (const c of codes) expect(c).toMatch(/^[A-Z]{4}$/);
   });
 
-  it("joins by code, counts down 3 seconds, then starts the match for both", () => {
+  it("waits in the lobby until both players are ready, counts down 3 seconds, then starts", () => {
     const m = new RoomManager(TIMINGS);
     const a = new FakeConn();
     const b = new FakeConn();
@@ -48,14 +57,43 @@ describe("RoomManager", () => {
     expect(a.last("room")).toMatchObject({ phase: "waiting", you: 0, connected: [true, false] });
 
     expect(m.join(b, room.code, 0)).toBe(room);
-    expect(b.last("room")).toMatchObject({ phase: "countdown", you: 1, startsInMs: 3000 });
+    expect(b.last("room")).toMatchObject({ phase: "waiting", you: 1, ready: [false, false], colors: [0, 1] });
+
+    room.setReady(a, true, 0);
+    expect(room.phase).toBe("waiting");
+    room.setReady(b, true, 0);
+    expect(b.last("room")).toMatchObject({ phase: "countdown", startsInMs: 3000 });
 
     let now = advance(m, 0, 2950);
     expect(room.phase).toBe("countdown");
     now = advance(m, now, 50);
     expect(room.phase).toBe("playing");
-    expect(a.last("match_start")).toMatchObject({ you: 0 });
-    expect(b.last("match_start")).toMatchObject({ you: 1 });
+    expect(a.last("match_start")).toMatchObject({ you: 0, colors: [0, 1] });
+    expect(b.last("match_start")).toMatchObject({ you: 1, colors: [0, 1] });
+  });
+
+  it("lets players pick colours, but not the colour the other player has", () => {
+    const m = new RoomManager(TIMINGS);
+    const a = new FakeConn();
+    const b = new FakeConn();
+    const room = m.create(a, 0);
+    m.join(b, room.code, 0);
+    room.setColor(a, 4, 0);
+    expect(b.last("room")!.colors).toEqual([4, 1]);
+    room.setColor(b, 4, 0); // taken
+    room.setColor(b, 99, 0); // not a colour
+    expect(room.colors).toEqual([4, 1]);
+    room.setColor(b, 0, 0);
+    expect(room.colors).toEqual([4, 0]);
+  });
+
+  it("a player joining gets a free colour if theirs is taken", () => {
+    const m = new RoomManager(TIMINGS);
+    const a = new FakeConn();
+    const room = m.create(a, 0);
+    room.setColor(a, 1, 0); // player 1 takes red, player 2's default
+    m.join(new FakeConn(), room.code, 0);
+    expect(room.colors[1]).not.toBe(1);
   });
 
   it("rejects unknown codes and full rooms", () => {
@@ -66,23 +104,28 @@ describe("RoomManager", () => {
     expect(m.join(new FakeConn(), room.code, 0)).toBe("room_full");
   });
 
-  it("goes back to waiting if a player leaves during the countdown", () => {
+  it("cancels the countdown if a player unreadies or leaves", () => {
     const m = new RoomManager(TIMINGS);
     const a = new FakeConn();
     const b = new FakeConn();
     const room = m.create(a, 0);
     m.join(b, room.code, 0);
-    m.leave(b, 100);
+    room.setReady(a, true, 0);
+    room.setReady(b, true, 0);
+    room.setReady(b, false, 100);
     expect(room.phase).toBe("waiting");
-    expect(a.last("room")).toMatchObject({ phase: "waiting", connected: [true, false] });
+    room.setReady(b, true, 200);
+    expect(room.phase).toBe("countdown");
+    m.leave(b, 300);
+    expect(room.phase).toBe("waiting");
+    expect(a.last("room")).toMatchObject({ phase: "waiting", connected: [true, false], ready: [true, false] });
   });
 
   it("applies commands on the next tick, sends snapshots and acks the seq", () => {
     const m = new RoomManager(TIMINGS);
     const a = new FakeConn();
     const b = new FakeConn();
-    const room = m.create(a, 0);
-    m.join(b, room.code, 0);
+    const room = startedRoom(m, a, b);
     let now = advance(m, 0, 3000);
     const barracks = Object.values(room.world!.entities).find((e) => e.type === "barracks" && e.owner === 0)!;
     room.queueCommand(a, 5, { type: "train", building: barracks.id, unit: "soldier" });
@@ -99,61 +142,40 @@ describe("RoomManager", () => {
     const m = new RoomManager(TIMINGS);
     const a = new FakeConn();
     const b = new FakeConn();
-    const room = m.create(a, 0);
-    m.join(b, room.code, 0);
+    const room = startedRoom(m, a, b);
     let now = advance(m, 0, 3000);
     m.leave(b, now);
     expect(a.last("opponent_disconnected")).toEqual({ t: "opponent_disconnected", forfeitInMs: 30000 });
     now = advance(m, now, 29_900);
     expect(room.phase).toBe("playing");
     now = advance(m, now, 100);
-    expect(room.phase).toBe("ended");
+    expect(room.phase).toBe("waiting");
     expect(a.last("match_end")).toEqual({ t: "match_end", winner: 0, reason: "forfeit" });
   });
 
-  it("starts a fresh match when both players ask for a rematch", () => {
+  it("returns to the lobby after a match, and both readying starts a fresh one", () => {
     const m = new RoomManager(TIMINGS);
     const a = new FakeConn();
     const b = new FakeConn();
-    const room = m.create(a, 0);
-    m.join(b, room.code, 0);
+    const room = startedRoom(m, a, b);
     let now = advance(m, 0, 3000);
     const hall = Object.values(room.world!.entities).find((e) => e.type === "town_hall" && e.owner === 1)!;
     hall.hp = 0;
     now = advance(m, now, 50);
-    expect(room.phase).toBe("ended");
+    expect(a.last("match_end")).toMatchObject({ winner: 0 });
+    expect(room.phase).toBe("waiting");
+    expect(b.last("room")).toMatchObject({ phase: "waiting", ready: [false, false], connected: [true, true] });
     const oldWorld = room.world;
 
-    room.requestRematch(a, now);
-    expect(room.phase).toBe("ended");
-    expect(b.last("room")).toMatchObject({ phase: "ended", rematch: [true, false] });
-
-    room.requestRematch(b, now);
-    expect(room.phase).toBe("countdown");
+    room.setReady(a, true, now);
+    room.setReady(b, true, now);
     now = advance(m, now, 3000);
     expect(room.phase).toBe("playing");
     expect(room.world).not.toBe(oldWorld);
     expect(room.world!.tick).toBeLessThan(5);
-    expect(room.rematch).toEqual([false, false]);
   });
 
-  it("no rematch once the opponent has left", () => {
-    const m = new RoomManager(TIMINGS);
-    const a = new FakeConn();
-    const b = new FakeConn();
-    const room = m.create(a, 0);
-    m.join(b, room.code, 0);
-    let now = advance(m, 0, 3000);
-    Object.values(room.world!.entities).find((e) => e.type === "town_hall" && e.owner === 1)!.hp = 0;
-    now = advance(m, now, 50);
-    room.requestRematch(a, now);
-    m.leave(b, now, true);
-    expect(a.last("room")).toMatchObject({ phase: "ended", connected: [true, false], rematch: [false, false] });
-    room.requestRematch(a, now);
-    expect(room.phase).toBe("ended");
-  });
-
-  it("deletes ended and empty rooms after 60 seconds", () => {
+  it("deletes empty rooms after 60 seconds", () => {
     const m = new RoomManager(TIMINGS);
     const a = new FakeConn();
     const room = m.create(a, 0);

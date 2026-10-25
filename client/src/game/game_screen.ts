@@ -120,6 +120,7 @@ export class GameScreen {
     ctx.restore();
     renderWorld(ctx, view, this.camera, GAME, {
       localPlayer: this.session.localPlayer,
+      colors: this.session.colors,
       selection: this.input.selection,
       dragBox: this.input.dragBox,
     });

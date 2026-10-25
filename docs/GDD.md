@@ -125,7 +125,7 @@ Clients talk to the server over secure WebSockets; commands go up, full-state sn
 
 **Transport.** The browser's native `WebSocket` on the client and the `ws` library on the server, over `wss://` (browsers cannot use UDP, and an HTTPS page requires secure sockets). TLS is terminated by the host. Messages are JSON, typed in `shared/protocol.ts`. Messages SHOULD go through a thin `NetProtocol` layer so the transport or encoding can be swapped (for example to WebRTC or binary) without touching game code.
 
-**Rooms.** One server process hosts many rooms. Each room has its own simulation, a 4-letter code (letters only, no I, L or O), and exactly two player slots. Lifecycle: `waiting` (one player) → `countdown` (both connected, 3 seconds) → `playing` → `ended`, and back to `countdown` when both players ask for a rematch. Ended or empty rooms are deleted after 60 seconds.
+**Rooms.** One server process hosts many rooms. Each room has its own simulation, a 4-letter code (letters only, no I, L or O), and exactly two player slots. Lifecycle: `waiting` (the lobby) → `countdown` (3 seconds) → `playing` → back to `waiting`. In the lobby each player picks a colour (not one the other player holds) and presses Ready; the countdown starts when both players are present and ready, and unreadying or leaving cancels it. After a match the room returns to the lobby with Ready cleared, so the same pair can play again. Empty rooms are deleted after 60 seconds.
 
 **Messages** (exact types in `shared/protocol.ts`):
 
@@ -135,12 +135,13 @@ Clients talk to the server over secure WebSockets; commands go up, full-state sn
 | Client → server | `join_room` | Join by code |
 | Client → server | `command` | One command with the client's `seq` (see Command protocol) |
 | Client → server | `ping` | Latency measurement |
-| Client → server | `rematch` | Ask to play again after a match |
+| Client → server | `set_color` | Lobby: pick a colour (index into `PLAYER_COLORS` in `shared/lobby.ts`) |
+| Client → server | `set_ready` | Lobby: ready or unready |
 | Client → server | `leave` | Leave the room (mid-match, this forfeits immediately) |
 | Server → client | `hello` | Sent on connect with the server's build number |
-| Server → client | `room` | Lobby status: code, phase, your slot, who's connected, countdown, rematch requests |
+| Server → client | `room` | Lobby status: code, phase, your slot, who's connected, colours, who's ready, countdown |
 | Server → client | `error` | Unknown room, full room, or malformed message |
-| Server → client | `match_start` | Your player slot and the entity type list for decoding snapshots |
+| Server → client | `match_start` | Your player slot, both players' colours, and the entity type list for decoding snapshots |
 | Server → client | `snapshot` | Tick number, your last applied `seq`, full entity and resource state, match result |
 | Server → client | `match_end` | Winner and reason |
 | Server → client | `opponent_disconnected` | The opponent dropped; time until they forfeit |
@@ -168,7 +169,9 @@ The client must feel instant even though nothing happens until the server confir
 
 **HUD:** gold, unit count against cap, the selected entity's HP and production queue, ping in milliseconds, and the room code while waiting.
 
-**Readability:** each player has one team colour on every entity they own; HP bars show above damaged entities; the local player is always blue and on the left of the map for orientation.
+**Readability:** each player keeps the colour they picked in the lobby on every entity they own, on both players' screens, so both players agree on who is who. HP bars show above damaged entities. The local player's base is always shown on the left of the map for orientation (player 2's view is mirrored).
+
+**Lobby:** after creating or joining a room, players see the room code and invite link, both player slots with their colour and Ready state, a colour picker, and a Ready button. The countdown shows in the lobby. After a match, "Back to lobby" returns there for another round.
 
 **Sandbox** (`?sandbox`): the same game screen driven by a local copy of the simulation, with Tab switching between players. Useful for testing rules and content without a server.
 
@@ -299,6 +302,7 @@ Record every change to a Core rule here, newest first, with the reason.
 
 | Date | Decision | Reason |
 | --- | --- | --- |
+| 2026-10-25 | Ready-up lobby with colour choice; players keep their own colour on both screens (was: local player always blue, opponent red); rooms return to the lobby after a match instead of a separate rematch step | Playtest feedback: seeing your own colour swapped on the other screen was confusing, and a lobby before the match was wanted |
 | 2026-10-25 | Leaving mid-match forfeits immediately; only dropped connections get the 30 s grace period | Nobody should wait 30 s for a player who chose to leave |
 | 2026-10-25 | Compact snapshot encoding plus WebSocket compression | Render's free tier has a small monthly bandwidth allowance |
 | 2026-10-25 | Client hosted as a Render static site instead of marz.gg | Loads instantly while the server wakes; deploys from the repo with no manual upload |

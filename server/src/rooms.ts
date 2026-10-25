@@ -10,14 +10,15 @@ import type { Command, PlayerCommand } from "../../shared/sim/commands";
 import { forfeit } from "../../shared/sim/match";
 import { step } from "../../shared/sim/step";
 import { createWorld, type World } from "../../shared/sim/world";
+import { DEFAULT_COLORS, PLAYER_COLORS } from "../../shared/lobby";
 import type { Connection } from "./net";
 
 export interface RoomTimings {
-  /** Countdown between both players joining and the match starting. */
+  /** Countdown between both players being ready and the match starting. */
   countdownMs: number;
   /** How long a disconnected player has before forfeiting. */
   forfeitMs: number;
-  /** Ended or empty rooms are deleted after this long. */
+  /** Empty rooms are deleted after this long. */
   cleanupMs: number;
 }
 
@@ -34,8 +35,9 @@ interface QueuedCommand extends PlayerCommand {
 }
 
 /**
- * One match: two player slots, the lobby lifecycle (waiting → countdown → playing → ended)
- * and, while playing, the one true simulation for that match.
+ * One room: two player slots and the lifecycle lobby (`waiting`) → `countdown` → `playing` → back to
+ * the lobby. In the lobby players pick colours and press Ready; the match starts when both are ready.
+ * While playing, the room owns the one true simulation for that match.
  */
 export class Room {
   phase: RoomPhase = "waiting";
@@ -45,10 +47,11 @@ export class Room {
   readonly acks: number[] = Array(PLAYERS_PER_ROOM).fill(0);
   /** When a disconnected player forfeits (playing phase only). */
   readonly forfeitAt: (number | null)[] = Array(PLAYERS_PER_ROOM).fill(null);
-  /** Players asking for a rematch after a match. */
-  readonly rematch: boolean[] = Array(PLAYERS_PER_ROOM).fill(false);
+  /** Lobby: colour index per slot, and who has pressed Ready. */
+  readonly colors: number[] = [...DEFAULT_COLORS];
+  readonly ready: boolean[] = Array(PLAYERS_PER_ROOM).fill(false);
   private countdownEndsAt = 0;
-  /** When the room became ended or empty, for cleanup. */
+  /** When the room became empty, for cleanup. */
   idleSince: number | null = null;
   private queue: QueuedCommand[] = [];
 
@@ -76,11 +79,12 @@ export class Room {
     const slot = this.slots.indexOf(null);
     if (slot === -1) return -1;
     this.slots[slot] = conn;
-    this.idleSince = null;
-    if (this.isFull()) {
-      this.phase = "countdown";
-      this.countdownEndsAt = now + this.timings.countdownMs;
+    this.ready[slot] = false;
+    // Keep the slot's colour unless a player already in the room has it.
+    if (this.colorTaken(this.colors[slot]!, slot)) {
+      this.colors[slot] = PLAYER_COLORS.findIndex((_, c) => !this.colorTaken(c, slot));
     }
+    this.idleSince = null;
     this.broadcastRoomState(now);
     return slot;
   }
@@ -93,6 +97,7 @@ export class Room {
     const slot = this.slotOf(conn);
     if (slot === -1) return;
     this.slots[slot] = null;
+    this.ready[slot] = false;
 
     if (this.phase === "playing" && voluntary) {
       if (this.world) forfeit(this.world, slot);
@@ -101,25 +106,38 @@ export class Room {
       this.send(1 - slot, { t: "opponent_disconnected", forfeitInMs: this.timings.forfeitMs });
     } else if (this.phase === "countdown") {
       this.phase = "waiting";
-    } else if (this.phase === "ended") {
-      this.rematch.fill(false);
     }
     if (this.isEmpty()) this.idleSince ??= now;
     this.broadcastRoomState(now);
   }
 
-  /**
-   * After a match, a player asks to play again in the same room. When both have asked (and both
-   * are still here), the countdown starts again with a fresh world.
-   */
-  requestRematch(conn: Connection, now: number): void {
+  /** True if a player in another slot is using this colour. Empty slots don't hold colours. */
+  private colorTaken(color: number, slot: number): boolean {
+    return this.colors.some((c, i) => i !== slot && this.slots[i] !== null && c === color);
+  }
+
+  /** Lobby: pick a colour. Ignored if the other player has it or the match is underway. */
+  setColor(conn: Connection, color: number, now: number): void {
     const slot = this.slotOf(conn);
-    if (slot === -1 || this.phase !== "ended") return;
-    this.rematch[slot] = true;
-    if (this.isFull() && this.rematch.every(Boolean)) {
+    if (slot === -1 || this.phase === "playing") return;
+    if (!PLAYER_COLORS[color] || this.colorTaken(color, slot)) return;
+    this.colors[slot] = color;
+    this.broadcastRoomState(now);
+  }
+
+  /**
+   * Lobby: ready or unready. When both players are connected and ready, the countdown starts;
+   * anyone unreadying during the countdown cancels it.
+   */
+  setReady(conn: Connection, ready: boolean, now: number): void {
+    const slot = this.slotOf(conn);
+    if (slot === -1 || this.phase === "playing") return;
+    this.ready[slot] = ready;
+    if (this.phase === "waiting" && this.isFull() && this.ready.every(Boolean)) {
       this.phase = "countdown";
       this.countdownEndsAt = now + this.timings.countdownMs;
-      this.idleSince = null;
+    } else if (this.phase === "countdown" && !ready) {
+      this.phase = "waiting";
     }
     this.broadcastRoomState(now);
   }
@@ -163,7 +181,8 @@ export class Room {
         you: slot,
         connected: this.slots.map((s) => s !== null),
         startsInMs: this.phase === "countdown" ? Math.max(0, this.countdownEndsAt - now) : null,
-        rematch: [...this.rematch],
+        colors: [...this.colors],
+        ready: [...this.ready],
       });
     }
   }
@@ -174,16 +193,22 @@ export class Room {
     this.queue = [];
     this.acks.fill(0);
     this.forfeitAt.fill(null);
-    this.rematch.fill(false);
     for (let slot = 0; slot < PLAYERS_PER_ROOM; slot++) {
-      this.send(slot, { t: "match_start", you: slot, typeIds: this.game.typeIds });
+      this.send(slot, {
+        t: "match_start",
+        you: slot,
+        typeIds: this.game.typeIds,
+        colors: [...this.colors],
+      });
     }
     this.broadcastRoomState(now);
   }
 
+  /** The match is over: tell both players, then return the room to the lobby for another game. */
   private endMatch(now: number): void {
-    this.phase = "ended";
-    this.idleSince = now;
+    this.phase = "waiting";
+    this.ready.fill(false);
+    if (this.isEmpty()) this.idleSince ??= now;
     this.forfeitAt.fill(null);
     const world = this.world!;
     for (let slot = 0; slot < PLAYERS_PER_ROOM; slot++) {
