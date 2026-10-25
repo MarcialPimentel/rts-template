@@ -236,7 +236,7 @@ Game rules are proven by headless tests that feed commands into the simulation a
 - **Simulation tests (MUST, run on every push):** build a world, apply a scripted list of commands, run N ticks, assert on state. Examples: a `train` with too little gold is rejected; 10 Soldiers beat 5; a Town Hall at 0 HP ends the match; commands for another player's units are ignored.
 - **Server integration tests (MUST, run on every push once networking exists):** start the real server, connect two scripted clients, create and join a room, play commands through to a result, and check both clients received the same snapshots.
 - **Two-client local test (each networking PR):** run the server and two browser tabs on one machine, play a match, and confirm both screens agree.
-- **Latency test (before calling the PoC done):** play with 150 ms of added latency and confirm controls still feel responsive.
+- **Latency test (before calling the PoC done):** play with 150 ms of added latency and confirm controls still feel responsive. Add `?lag=150` to the game URL to simulate it (half on send, half on receive). Measured 2026-10-25: markers, sound and pending trains appear within one frame; units start moving on screen about 255 ms after a click (150 ms round trip + 100 ms interpolation delay + up to one tick).
 - **Online playtest (milestone gate):** two people on different networks complete a match against the deployed server.
 
 Tests use Vitest and run in GitHub Actions on every push and pull request.

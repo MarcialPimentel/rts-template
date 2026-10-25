@@ -47,10 +47,13 @@ function startOnline(joinCode?: string): void {
   screen = new OnlineController({ container: app, joinCode, onExit: showMenu });
 }
 
-/** Keeps a ?server= test override across screens. */
+/** Keeps testing parameters (?server= override, ?lag= latency simulation) across screens. */
 function keepServerParam(prefix = "?"): string {
-  const server = new URLSearchParams(location.search).get("server");
-  return server ? `${prefix}server=${encodeURIComponent(server)}` : "";
+  const params = new URLSearchParams(location.search);
+  const kept = ["server", "lag"]
+    .filter((k) => params.has(k))
+    .map((k) => `${k}=${encodeURIComponent(params.get(k)!)}`);
+  return kept.length ? prefix + kept.join("&") : "";
 }
 
 const params = new URLSearchParams(location.search);
