@@ -1,8 +1,16 @@
 import { ROOM_CODE_LENGTH, type ServerMessage } from "../../../shared/protocol";
-import { serverUrl } from "../config";
+import { serverHttpUrl, serverUrl } from "../config";
 import { GameScreen } from "../game/game_screen";
 import { Connection } from "../net/connection";
 import { OnlineSession } from "../net/online_session";
+
+/** Show the wake screen if the server hasn't answered by then (GDD: 2 seconds). */
+const WAKE_HINT_AFTER_MS = 2000;
+/** How long a sleeping Render free service usually takes to boot. */
+const EXPECTED_WAKE_MS = 60_000;
+const ATTEMPT_TIMEOUT_MS = 6000;
+const RETRY_EVERY_MS = 2500;
+const GIVE_UP_AFTER_MS = 150_000;
 
 export interface OnlineOptions {
   container: HTMLElement;
@@ -29,7 +37,7 @@ export class OnlineController {
 
   dispose(): void {
     this.disposed = true;
-    window.clearInterval(this.countdownTimer);
+    window.clearInterval(this.screenTimer);
     this.game?.dispose();
     this.game = null;
     this.conn?.close();
@@ -37,21 +45,64 @@ export class OnlineController {
     this.screen?.remove();
   }
 
+  /**
+   * Connects, retrying while a sleeping free-tier server boots (about a minute). After 2 seconds
+   * without an answer the wake screen explains the wait instead of a silent hang (GDD MUST).
+   */
   private async connect(): Promise<void> {
+    const started = performance.now();
     this.show(`<div class="spinner"></div><p>Connecting to the server…</p>`);
-    try {
-      this.conn = await Connection.open(serverUrl());
-    } catch {
-      if (this.disposed) return;
-      this.showError("Couldn't reach the game server.");
-      return;
+    const wakeHint = window.setTimeout(() => this.showWaking(started), WAKE_HINT_AFTER_MS);
+    this.pokeServer();
+
+    let conn: Connection | null = null;
+    while (!conn && !this.disposed) {
+      try {
+        conn = await Connection.open(serverUrl(), ATTEMPT_TIMEOUT_MS);
+      } catch {
+        if (performance.now() - started > GIVE_UP_AFTER_MS) break;
+        this.pokeServer();
+        await new Promise((r) => window.setTimeout(r, RETRY_EVERY_MS));
+      }
     }
+    window.clearTimeout(wakeHint);
+
     if (this.disposed) {
-      this.conn.close();
+      conn?.close();
       return;
     }
+    if (!conn) {
+      this.showError("The game server didn't respond. It may be down; try again in a few minutes.");
+      return;
+    }
+    this.conn = conn;
     this.conn.onMessage((m) => this.onMessage(m));
     this.conn.onClose(() => this.onConnectionLost());
+  }
+
+  /** An HTTP request wakes a sleeping Render service even if WebSocket attempts are refused. */
+  private pokeServer(): void {
+    fetch(`${serverHttpUrl()}/healthz`, { cache: "no-store" }).catch(() => {});
+  }
+
+  private showWaking(started: number): void {
+    this.show(`
+      <div class="spinner"></div>
+      <h1>Waking up the server</h1>
+      <p>The free server sleeps when nobody is playing. This can take up to a minute.</p>
+      <div class="progress"><i></i></div>
+      <p class="build" data-field="elapsed"></p>
+      <div class="buttons"><button data-action="back">Cancel</button></div>`);
+    this.on("back", () => this.opts.onExit());
+    const update = () => {
+      const elapsed = performance.now() - started;
+      const bar = this.screen?.querySelector<HTMLElement>(".progress i");
+      if (bar) bar.style.width = `${Math.min(95, (elapsed / EXPECTED_WAKE_MS) * 100)}%`;
+      const label = this.screen?.querySelector('[data-field="elapsed"]');
+      if (label) label.textContent = `${Math.floor(elapsed / 1000)} s`;
+    };
+    update();
+    this.screenTimer = window.setInterval(update, 250);
   }
 
   private onMessage(m: ServerMessage): void {
@@ -123,7 +174,7 @@ export class OnlineController {
         if (el) el.textContent = `Match starts in ${s}…`;
       };
       update();
-      this.countdownTimer = window.setInterval(update, 100);
+      this.screenTimer = window.setInterval(update, 100);
       return;
     }
     if (m.phase !== "waiting") return;
@@ -148,7 +199,7 @@ export class OnlineController {
 
   private startGame(you: number, typeIds: string[]): void {
     if (!this.conn) return;
-    window.clearInterval(this.countdownTimer);
+    window.clearInterval(this.screenTimer);
     this.screen?.remove();
     this.screen = null;
     this.session = new OnlineSession(this.conn, you, typeIds, this.roomCode);
@@ -186,10 +237,10 @@ export class OnlineController {
     this.on("back", () => this.opts.onExit());
   }
 
-  private countdownTimer = 0;
+  private screenTimer = 0;
 
   private show(html: string): void {
-    window.clearInterval(this.countdownTimer);
+    window.clearInterval(this.screenTimer);
     if (!this.screen) {
       this.screen = document.createElement("div");
       this.screen.className = "menu";

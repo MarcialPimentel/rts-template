@@ -260,3 +260,22 @@ input {
 .banner.hidden {
   display: none;
 }
+
+.progress {
+  width: min(320px, 100%);
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+.progress i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--gold);
+  transition: width 0.25s linear;
+}
+
+#app {
+  height: 100%;
+}
