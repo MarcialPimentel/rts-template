@@ -7,7 +7,7 @@ services:
     plan: free
     region: ohio
     branch: main
-    buildCommand: npm ci && npm run build:server
+    buildCommand: npm ci --include=dev && npm run build:server
     startCommand: npm run start:server
     healthCheckPath: /healthz
     autoDeploy: true
@@ -19,7 +19,7 @@ services:
     name: rts-template-client
     runtime: static
     branch: main
-    buildCommand: npm ci && npm run build:client
+    buildCommand: npm ci --include=dev && npm run build:client
     staticPublishPath: client/dist
     autoDeploy: true
     envVars:
