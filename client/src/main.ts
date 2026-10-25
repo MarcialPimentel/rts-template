@@ -1,4 +1,4 @@
 const app = document.getElementById("app");
 if (app) {
-  app.textContent = "RTS Template";
+  app.innerHTML = `<h1>RTS Template</h1><p class="build">build ${__BUILD_ID__}</p>`;
 }
