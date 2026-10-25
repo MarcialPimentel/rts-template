@@ -3,6 +3,7 @@ import { serverHttpUrl, serverUrl } from "../config";
 import { GameScreen } from "../game/game_screen";
 import { Connection } from "../net/connection";
 import { OnlineSession } from "../net/online_session";
+import { buildsMatch } from "../net/version";
 
 /** Show the wake screen if the server hasn't answered by then (GDD: 2 seconds). */
 const WAKE_HINT_AFTER_MS = 2000;
@@ -113,6 +114,10 @@ export class OnlineController {
     }
     switch (m.t) {
       case "hello":
+        if (!buildsMatch(__BUILD_ID__, m.build)) {
+          this.showVersionMismatch(m.build);
+          return;
+        }
         this.showOnlineMenu();
         if (this.opts.joinCode) this.join(this.opts.joinCode);
         break;
@@ -223,6 +228,23 @@ export class OnlineController {
       return;
     }
     this.showError("Lost the connection to the server.");
+  }
+
+  /** GDD: a client and server on different builds show "please refresh" instead of connecting. */
+  private showVersionMismatch(serverBuild: string): void {
+    this.conn?.close();
+    this.conn = null;
+    this.show(`
+      <h1>New version available</h1>
+      <p>The game was just updated. Refresh to load the latest version.</p>
+      <p class="build">Your version ${escapeHtml(__BUILD_ID__)} · server ${escapeHtml(serverBuild)}</p>
+      <p class="build">If this keeps happening, the server is still restarting. Try again in a minute.</p>
+      <div class="buttons">
+        <button class="primary" data-action="refresh">Refresh</button>
+        <button data-action="back">Back</button>
+      </div>`);
+    this.on("refresh", () => location.reload());
+    this.on("back", () => this.opts.onExit());
   }
 
   private showError(message: string): void {
