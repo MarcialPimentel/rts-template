@@ -125,27 +125,33 @@ Clients talk to the server over secure WebSockets; commands go up, full-state sn
 
 **Transport.** The browser's native `WebSocket` on the client and the `ws` library on the server, over `wss://` (browsers cannot use UDP, and an HTTPS page requires secure sockets). TLS is terminated by the host. Messages are JSON, typed in `shared/protocol.ts`. Messages SHOULD go through a thin `NetProtocol` layer so the transport or encoding can be swapped (for example to WebRTC or binary) without touching game code.
 
-**Rooms.** One server process hosts many rooms. Each room has its own simulation, a 4-letter code, and exactly two player slots. Lifecycle: `waiting` (one player) → `countdown` (both connected, 3 seconds) → `playing` → `ended`. Ended or empty rooms are deleted after 60 seconds.
+**Rooms.** One server process hosts many rooms. Each room has its own simulation, a 4-letter code (letters only, no I, L or O), and exactly two player slots. Lifecycle: `waiting` (one player) → `countdown` (both connected, 3 seconds) → `playing` → `ended`, and back to `countdown` when both players ask for a rematch. Ended or empty rooms are deleted after 60 seconds.
 
-**Messages:**
+**Messages** (exact types in `shared/protocol.ts`):
 
 | Direction | Message | Purpose |
 | --- | --- | --- |
 | Client → server | `create_room` | Make a room, receive its code |
 | Client → server | `join_room` | Join by code |
-| Client → server | `command` | One command (see Command protocol) |
+| Client → server | `command` | One command with the client's `seq` (see Command protocol) |
 | Client → server | `ping` | Latency measurement |
-| Server → client | `room_state` | Lobby status, player slot, countdown |
-| Server → client | `match_start` | Map, starting entities, assigned player ID |
-| Server → client | `snapshot` | Tick number, last applied `seq` per player, full entity and resource state |
+| Client → server | `rematch` | Ask to play again after a match |
+| Client → server | `leave` | Leave the room (mid-match, this forfeits immediately) |
+| Server → client | `hello` | Sent on connect with the server's build number |
+| Server → client | `room` | Lobby status: code, phase, your slot, who's connected, countdown, rematch requests |
+| Server → client | `error` | Unknown room, full room, or malformed message |
+| Server → client | `match_start` | Your player slot and the entity type list for decoding snapshots |
+| Server → client | `snapshot` | Tick number, your last applied `seq`, full entity and resource state, match result |
 | Server → client | `match_end` | Winner and reason |
+| Server → client | `opponent_disconnected` | The opponent dropped; time until they forfeit |
 | Server → client | `pong` | Latency reply |
+| Server → client | `room_closed` | The room was cleaned up |
 
-**Snapshots.** The PoC sends the full state every tick (20 Hz). Delta compression is an extension point for when unit counts grow.
+**Snapshots.** The PoC sends the full state every tick (20 Hz), encoded compactly: each entity is a short array of rounded numbers, so a 60-unit battle is under 3 KB, and WebSocket compression shrinks it further. This matters on free hosting with a monthly bandwidth allowance. Delta compression is an extension point for when unit counts grow.
 
 **Interpolation.** Clients render about 100 ms behind the newest snapshot and interpolate positions between the two snapshots around that time. This hides jitter at the cost of a small, constant delay.
 
-**Disconnects.** A player whose socket closes during a match has 30 seconds before forfeiting; the opponent sees a countdown. Reconnecting into that window is out of scope for the PoC, so in practice a disconnect is a loss.
+**Disconnects.** A player whose socket closes during a match has 30 seconds before forfeiting; the opponent sees a countdown banner. A player who leaves on purpose forfeits immediately. Reconnecting into that window is out of scope for the PoC, so in practice a disconnect is a loss.
 
 ## Client presentation and UX *(Core)*
 
@@ -163,6 +169,8 @@ The client must feel instant even though nothing happens until the server confir
 **HUD:** gold, unit count against cap, the selected entity's HP and production queue, ping in milliseconds, and the room code while waiting.
 
 **Readability:** each player has one team colour on every entity they own; HP bars show above damaged entities; the local player is always blue and on the left of the map for orientation.
+
+**Sandbox** (`?sandbox`): the same game screen driven by a local copy of the simulation, with Tab switching between players. Useful for testing rules and content without a server.
 
 **Server wake screen (MUST).** If the server does not answer within 2 seconds, show "Waking up the server, this can take up to a minute" with a progress indicator, and keep retrying. Never show a silent hang or a raw connection error during a cold start.
 
@@ -202,10 +210,14 @@ rts-template/
       systems/             income, production, targeting, movement, combat, deaths, win check
       commands/            one module per command: validate and apply
     data/                  game layer: unit and building definitions, map, economy constants
-    protocol.ts            message types for client and server
+    protocol.ts            message types, validation and the snapshot codec
+    view.ts                drawable view of the world (from the sim or a snapshot)
   server/src/              Node entry point, NetProtocol (ws), room manager, room loop
-  client/                  Vite app: index.html, Canvas rendering, input, HUD,
-                           interpolation, lobby, wake screen, local sandbox mode
+  client/src/
+    game/                  game screen: Canvas rendering, camera, input, HUD, feedback,
+                           and the Session interface (local sandbox or online)
+    net/                   NetProtocol (browser WebSocket), online session, snapshot buffer
+    screens/               online flow: connect and wake screen, lobby, rematch
   tests/                   Vitest: simulation tests and server integration tests
   deploy/Dockerfile        portable server container (Render runs Node natively)
   .github/workflows/       typecheck, test and build on every push
@@ -287,6 +299,8 @@ Record every change to a Core rule here, newest first, with the reason.
 
 | Date | Decision | Reason |
 | --- | --- | --- |
+| 2026-10-25 | Leaving mid-match forfeits immediately; only dropped connections get the 30 s grace period | Nobody should wait 30 s for a player who chose to leave |
+| 2026-10-25 | Compact snapshot encoding plus WebSocket compression | Render's free tier has a small monthly bandwidth allowance |
 | 2026-10-25 | Client hosted as a Render static site instead of marz.gg | Loads instantly while the server wakes; deploys from the repo with no manual upload |
 | 2026-10-25 | Switched from Godot 4.7.2 to TypeScript (Node server, Canvas client, Vite, Vitest) | One language shared by client and server, small fast-loading client, and the whole game can be built and tested headlessly by AI sessions. Architecture rules are engine-agnostic, so a later port is a code rewrite, not a redesign |
 | 2026-10-25 | Godot 4.7.2 pinned | Latest stable release at project start (superseded the same day) |
