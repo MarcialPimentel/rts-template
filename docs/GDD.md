@@ -49,18 +49,18 @@ The server owns the only real game; clients send commands and draw what the serv
 2. **Commands as data.** Every player action is a command: a small data object sent to the server, validated, and applied on the next tick. Input handling, AI opponents, replays and tests all produce the same commands.
 3. **Simulation separate from presentation.** Simulation code has no nodes for sprites, sound, input or UI, and never reads from them. Presentation reads simulation state and draws it. The simulation must run headless.
 4. **Fixed tick.** The simulation advances in fixed steps of 50 ms (20 ticks per second), independent of frame rate. All durations and speeds in data files are in seconds and converted to ticks at load.
-5. **One project, two exports.** Server and client are the same Godot project sharing the same simulation code. The server is a headless Linux export; the client is a web export.
-6. **Data-driven content.** Units, buildings and costs are defined in resource files, not in code. Adding a unit type requires no simulation code change unless it needs a new ability.
-7. **Portable server.** The server ships as a Docker container, so hosting can move between providers without code changes.
-8. **Engine version pinned.** The Godot version is recorded in the repo (see `.godot-version`) and changed only by a deliberate upgrade pull request.
+5. **One codebase, two targets.** Server and client are one TypeScript repo sharing `shared/` (simulation, commands, protocol, data). The server is a Node process; the client is a browser bundle. Neither duplicates game rules.
+6. **Data-driven content.** Units, buildings and costs are defined in `shared/data/`, not inside systems. Adding a unit type requires no simulation code change unless it needs a new ability.
+7. **Portable server.** The server is a plain Node process with a Dockerfile, so hosting can move between providers without code changes.
+8. **Toolchain pinned.** The Node version is in `.nvmrc` and package versions are locked in `package-lock.json`. Upgrades happen in their own pull request.
 
 ```mermaid
 flowchart LR
-    subgraph Client["Browser client (web export)"]
+    subgraph Client["Browser client (Canvas)"]
         Input["Input<br/>clicks to commands, instant markers"]
         Pres["Presentation<br/>interpolates snapshots, draws world"]
     end
-    subgraph Server["Game server (headless, Docker)"]
+    subgraph Server["Game server (Node)"]
         Val["Validate commands<br/>ownership, cost, cap; else dropped"]
         Sim["Simulation, 20 ticks/s<br/>income, production, combat, win"]
         Snap["Snapshot<br/>full state sent to both players"]
@@ -68,7 +68,7 @@ flowchart LR
     Input -- "commands over wss" --> Val
     Val --> Sim --> Snap
     Snap -- "snapshots, 20 per second" --> Pres
-    Shared[("Shared by both exports: sim/ and data/")]
+    Shared[("Shared by both: shared/ (sim, commands, protocol, data)")]
 ```
 
 The client never changes the world itself: its clicks become commands, and what it draws comes only from server snapshots.
@@ -77,11 +77,11 @@ The client never changes the world itself: its clicks become commands, and what 
 
 The simulation is a plain state object advanced one tick at a time by a fixed sequence of systems.
 
-**World state** holds the tick number, each player's resources and status, and a dictionary of entities keyed by integer ID. The server assigns IDs and never reuses them within a match.
+**World state** holds the tick number, each player's resources and status, and a map of entities keyed by integer ID. It is plain JSON-serializable data, so it can be sent as a snapshot as is. The server assigns IDs and never reuses them within a match.
 
 **Entities** have an ID, an owner, a type ID pointing at its definition, a position, current HP, and optional components: `mover` (target, speed), `attacker` (target, cooldown), `producer` (queue, progress) and `income` (amount per second). Systems act on whichever components an entity has.
 
-**Definitions** are Godot resources (`.tres`) in `data/`, one per unit or building type, holding cost, HP, speed, damage, range, attack interval, build time and which components it gets. A game's whole roster lives here.
+**Definitions** are typed data objects in `shared/data/`, one per unit or building type, holding cost, HP, speed, damage, range, attack interval, build time and which components it gets. A game's whole roster lives here.
 
 **Tick order** (SHOULD stay stable, since order affects outcomes):
 
@@ -123,7 +123,7 @@ Rules:
 
 Clients talk to the server over secure WebSockets; commands go up, full-state snapshots come down 20 times a second.
 
-**Transport.** `WebSocketMultiplayerPeer` over `wss://` (browsers cannot use Godot's default UDP transport, and an HTTPS page requires secure sockets). TLS is terminated by the host. Messages SHOULD go through a thin `NetProtocol` layer so the transport can be swapped (for example to WebRTC) without touching game code.
+**Transport.** The browser's native `WebSocket` on the client and the `ws` library on the server, over `wss://` (browsers cannot use UDP, and an HTTPS page requires secure sockets). TLS is terminated by the host. Messages are JSON, typed in `shared/protocol.ts`. Messages SHOULD go through a thin `NetProtocol` layer so the transport or encoding can be swapped (for example to WebRTC or binary) without touching game code.
 
 **Rooms.** One server process hosts many rooms. Each room has its own simulation, a 4-letter code, and exactly two player slots. Lifecycle: `waiting` (one player) → `countdown` (both connected, 3 seconds) → `playing` → `ended`. Ended or empty rooms are deleted after 60 seconds.
 
@@ -184,60 +184,62 @@ The ruleset is small on purpose but still a game: the economy decision is when t
 
 **Win condition:** the enemy Town Hall reaches 0 HP, or the opponent disconnects for 30 seconds.
 
-These numbers are starting points for playtesting, not balanced values. They live in `data/` and are tuned there.
+These numbers are starting points for playtesting, not balanced values. They live in `shared/data/` and are tuned there.
 
 ## Project structure *(Core)*
 
-The folder layout enforces the architecture: `sim/` may never import from `client/`, and only `data/` changes when a new game swaps its content.
+The folder layout enforces the architecture: `shared/` may never import from `client/` or `server/`, and only `shared/data/` changes when a new game swaps its content.
 
 ```
 rts-template/
   docs/GDD.md              this document
-  project.godot
-  .godot-version           pinned engine version
-  sim/                     pure simulation, no rendering or input
-    world_state.gd
-    systems/               income, production, targeting, movement, combat, deaths, win_check
-    commands/              one script per command: schema, validate, apply
-  data/                    game layer: unit and building definitions, map, economy constants
-  net/                     NetProtocol, message encoding, room manager (server side)
-  server/                  headless entry point, room loop
-  client/                  rendering, input, HUD, interpolation, lobby and wake screens
-  tests/                   headless simulation tests
-  deploy/
-    Dockerfile             server container
-    export_presets.cfg     web and Linux server exports
-  .github/workflows/       build, test and export on every push
+  package.json             one package; scripts for dev, build, test
+  .nvmrc                   pinned Node version
+  render.yaml              Render Blueprint (server + client)
+  shared/                  imported by both client and server; no DOM, no Node APIs
+    sim/
+      world.ts             world state, entities, tick loop
+      systems/             income, production, targeting, movement, combat, deaths, win check
+      commands/            one module per command: validate and apply
+    data/                  game layer: unit and building definitions, map, economy constants
+    protocol.ts            message types for client and server
+  server/src/              Node entry point, NetProtocol (ws), room manager, room loop
+  client/                  Vite app: index.html, Canvas rendering, input, HUD,
+                           interpolation, lobby, wake screen, local sandbox mode
+  tests/                   Vitest: simulation tests and server integration tests
+  deploy/Dockerfile        portable server container (Render runs Node natively)
+  .github/workflows/       typecheck, test and build on every push
 ```
 
-Rules: `sim/` and `data/` are shared by both exports; `server/` is excluded from the web export and `client/` from the server export. Code style follows the Godot GDScript style guide with static typing everywhere.
+Rules: `shared/` must run in both a browser and Node, so it uses no DOM or Node-only APIs. TypeScript runs in strict mode everywhere.
 
 ## Deployment *(Core; hosts are Game layer choices)*
 
-The web client is static files on marz.gg; the game server is a Docker container on Render's free tier, reached at a `wss://` address set in one config value.
+Both pieces deploy from `render.yaml` on every push to `main`: the client as a free static site that never sleeps, the server as a free Node web service reached at a `wss://` address set in one config value.
 
 | Piece | PoC host | Notes |
 | --- | --- | --- |
-| Web client | marz.gg (SiteGround), under `public_html/games/<game-name>/` | Static Godot web export; shared hosting cannot run the server |
-| Game server | Render free web service, built from `deploy/Dockerfile` | Sleeps after 15 minutes idle; the wake screen covers the cold start |
-| Fallback server | Own PC plus a free tunnel, or a ~$5/month VPS | Same container; only the server URL changes |
+| Web client | Render static site (`rts-template-client`) | Loads instantly even while the server sleeps, so the wake screen can show. marz.gg can link to or embed it later |
+| Game server | Render free web service (`rts-template-server`) | Sleeps after 15 minutes idle; waking takes about a minute |
+| Fallback server | Own PC plus a free tunnel, or a ~$5/month VPS | `deploy/Dockerfile`; only the server URL changes |
 
 Rules:
 
-- The server URL MUST be a single config value, never hard-coded in game scripts.
+- The server URL MUST be a single config value (`VITE_SERVER_URL` at client build time), never hard-coded in game code.
 - Every build shows a build number (commit short hash) on the title screen, and the server reports its build number on connect. A client and server on different builds show a "please refresh" message instead of connecting.
-- Use Godot's single-threaded web export unless a feature truly needs threads, since threaded exports require extra server headers that shared hosting may not provide.
+- The server answers `GET /healthz` for Render's health check.
 
 ## Testing *(Core)*
 
 Game rules are proven by headless tests that feed commands into the simulation and check the outcome, so AI-written changes are verified without manual play.
 
 - **Simulation tests (MUST, run on every push):** build a world, apply a scripted list of commands, run N ticks, assert on state. Examples: a `train` with too little gold is rejected; 10 Soldiers beat 5; a Town Hall at 0 HP ends the match; commands for another player's units are ignored.
-- **Two-client local test (each networking PR):** run the server and two clients on one machine, play a match, and confirm both screens agree.
+- **Server integration tests (MUST, run on every push once networking exists):** start the real server, connect two scripted clients, create and join a room, play commands through to a result, and check both clients received the same snapshots.
+- **Two-client local test (each networking PR):** run the server and two browser tabs on one machine, play a match, and confirm both screens agree.
 - **Latency test (before calling the PoC done):** play with 150 ms of added latency and confirm controls still feel responsive.
 - **Online playtest (milestone gate):** two people on different networks complete a match against the deployed server.
 
-Tests use the GUT framework (Godot Unit Test) or an equivalent runner that works headless in CI.
+Tests use Vitest and run in GitHub Actions on every push and pull request.
 
 ## Milestones *(Core)*
 
@@ -245,13 +247,13 @@ Five milestones, each ending in something you can play or see, tracked on GitHub
 
 ```mermaid
 flowchart TD
-    M1["M1 · Foundation<br/>Repo, GDD, Godot project with the sim/client split, CI, web export live on marz.gg with a build number"]
+    M1["M1 · Foundation<br/>Repo, GDD, TypeScript project with the shared/client/server split, CI, client and server live on Render with a build number"]
     M2["M2 · Local sandbox<br/>Full ruleset offline, both players driven from one screen through commands, simulation tests in CI"]
     M3["M3 · Networking<br/>Headless server, WebSocket rooms with codes, snapshots and interpolation, two clients on one machine"]
-    M4["M4 · Online<br/>Server container deployed to Render, wake screen, client and server build-number check"]
+    M4["M4 · Online<br/>Server live on Render with a Dockerfile for portability, wake screen, client and server build-number check"]
     M5["M5 · Hardening<br/>Ping display, disconnect forfeit, rematch button, 150 ms latency test"]
     Done(["Template ready to copy for the next RTS"])
-    M1 -- "Gate: empty web build loads on marz.gg with the right build number" --> M2
+    M1 -- "Gate: the client loads on Render with the right build number" --> M2
     M2 -- "Gate: a full match plays to a victory screen locally" --> M3
     M3 -- "Gate: both screens agree through a full match" --> M4
     M4 -- "Gate: two people on different networks finish a match" --> M5
@@ -270,7 +272,7 @@ Future games grow the template through these planned seams, none of which change
 | New ability (heal, ranged, build) | A new component plus a system in the tick order | Document its place in the tick order |
 | Workers and harvesting | `gather` command, resource nodes, carry component | Needs pathfinding first |
 | Building placement | `build` command with server-side footprint validation | Client shows a ghost preview |
-| Pathfinding | Inside the movement system (Godot navigation or a grid A*) | Commands unchanged |
+| Pathfinding | Inside the movement system (a grid A* or flow field) | Commands unchanged |
 | Fog of war | Server filters each player's snapshot to what they can see | Only possible because the server is authoritative |
 | AI opponent | A server-side bot that emits commands into a room | Same validation as a human |
 | Replays | Record match seed plus the command log; replay through the simulation | Requires the seeded-randomness rule |
@@ -285,11 +287,13 @@ Record every change to a Core rule here, newest first, with the reason.
 
 | Date | Decision | Reason |
 | --- | --- | --- |
-| 2026-10-25 | Godot 4.7.2 pinned | Latest stable release at project start (released 2026-08-18) |
+| 2026-10-25 | Client hosted as a Render static site instead of marz.gg | Loads instantly while the server wakes; deploys from the repo with no manual upload |
+| 2026-10-25 | Switched from Godot 4.7.2 to TypeScript (Node server, Canvas client, Vite, Vitest) | One language shared by client and server, small fast-loading client, and the whole game can be built and tested headlessly by AI sessions. Architecture rules are engine-agnostic, so a later port is a code rewrite, not a redesign |
+| 2026-10-25 | Godot 4.7.2 pinned | Latest stable release at project start (superseded the same day) |
 | 2026-10-25 | Repo `MarcialPimentel/rts-template`; this file is the canonical GDD | One source of truth that AI sessions can be pointed at |
 | 2026-10-25 | Barracks pre-placed in the PoC | Building placement is its own UX problem; listed as an extension point |
-| 2026-10-25 | Server hosted on Render free tier, packaged as Docker | Free for under 5 playtesters; Docker keeps a later move to a ~$5 VPS a config change |
-| 2026-10-25 | Server-authoritative state sync over deterministic lockstep | Godot does not guarantee float determinism; desync bugs are hard to debug in AI-written code |
+| 2026-10-25 | Server hosted on Render free tier, with a Dockerfile for portability | Free for under 5 playtesters; a later move to a ~$5 VPS is a config change |
+| 2026-10-25 | Server-authoritative state sync over deterministic lockstep | Floating-point determinism across machines isn't guaranteed; desync bugs are hard to debug in AI-written code |
 | 2026-10-25 | WebSockets over WebRTC | Browsers cannot use UDP; WebRTC needs a signaling server and has NAT issues |
 | 2026-10-25 | No workers in the PoC; passive income | Harvesting adds pathing and AI work without testing networking |
 

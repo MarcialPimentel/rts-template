@@ -1,21 +1,10 @@
-# Godot 4
-.godot/
-/android/
-*.translation
-
-# Exports and build output
-/build/
-/export/
-*.pck
-*.wasm
-
-# Editor and OS
-.import/
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
-
-# Secrets
+node_modules/
+dist/
+coverage/
+*.log
 .env
 *.env
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
