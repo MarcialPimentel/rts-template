@@ -110,6 +110,7 @@ export class OnlineController {
     if (this.session) {
       this.session.handle(m);
       if (m.t === "room_closed") this.leaveToMenu();
+      if (m.t === "room") this.onRoomDuringGame(m);
       return;
     }
     switch (m.t) {
@@ -209,8 +210,32 @@ export class OnlineController {
     this.screen = null;
     this.session = new OnlineSession(this.conn, you, typeIds, this.roomCode);
     this.game = new GameScreen(this.opts.container, this.session, {
-      endActions: [{ label: "Back to menu", run: () => this.leaveToMenu() }],
+      endActions: [
+        { label: "Rematch", run: () => this.requestRematch() },
+        { label: "Back to menu", run: () => this.leaveToMenu() },
+      ],
     });
+  }
+
+  private requestRematch(): void {
+    this.conn?.send({ t: "rematch" });
+    this.game?.setEndNote("Waiting for your opponent…");
+  }
+
+  /** After a match: show rematch status, and switch to the countdown once both players agree. */
+  private onRoomDuringGame(m: Extract<ServerMessage, { t: "room" }>): void {
+    if (m.phase === "countdown") {
+      this.game?.dispose(); // also disposes the session
+      this.game = null;
+      this.session = null;
+      this.showRoom(m);
+      return;
+    }
+    if (m.phase !== "ended" || !this.game) return;
+    const opponent = 1 - m.you;
+    if (!m.connected[opponent]) this.game.setEndNote("Your opponent left the room.");
+    else if (m.rematch[m.you]) this.game.setEndNote("Waiting for your opponent…");
+    else if (m.rematch[opponent]) this.game.setEndNote("Your opponent wants a rematch!");
   }
 
   private leaveToMenu(): void {

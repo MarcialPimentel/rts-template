@@ -144,6 +144,12 @@ export class GameScreen {
     }
   }
 
+  /** A status line under the result buttons (e.g. rematch status). */
+  setEndNote(text: string): void {
+    const note = this.endOverlay.querySelector(".note");
+    if (note) note.textContent = text;
+  }
+
   private showEnd(view: ViewState): void {
     const won = view.winner === this.session.localPlayer;
     const title = view.winner === null ? "Draw" : won ? "Victory" : "Defeat";
@@ -157,7 +163,7 @@ export class GameScreen {
             ? "You destroyed the enemy Town Hall."
             : "Your Town Hall was destroyed."
           : "";
-    this.endOverlay.innerHTML = `<div class="card"><h2 class="${won ? "win" : "lose"}">${title}</h2><p>${reason}</p><div class="actions"></div></div>`;
+    this.endOverlay.innerHTML = `<div class="card"><h2 class="${won ? "win" : "lose"}">${title}</h2><p>${reason}</p><div class="actions"></div><p class="note"></p></div>`;
     const actions = this.endOverlay.querySelector(".actions")!;
     for (const a of this.options.endActions) {
       const b = document.createElement("button");

@@ -90,7 +90,7 @@ export function startServer(options: ServerOptions): Promise<RunningServer> {
             c.send({ t: "pong", id: message.id });
             break;
           case "rematch":
-            // Rematches arrive in M5 (#25).
+            manager.roomFor(c)?.requestRematch(c, now);
             break;
           case "leave":
             manager.leave(c, now, true);

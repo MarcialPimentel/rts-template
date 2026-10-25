@@ -108,6 +108,22 @@ export class Room {
     this.broadcastRoomState(now);
   }
 
+  /**
+   * After a match, a player asks to play again in the same room. When both have asked (and both
+   * are still here), the countdown starts again with a fresh world.
+   */
+  requestRematch(conn: Connection, now: number): void {
+    const slot = this.slotOf(conn);
+    if (slot === -1 || this.phase !== "ended") return;
+    this.rematch[slot] = true;
+    if (this.isFull() && this.rematch.every(Boolean)) {
+      this.phase = "countdown";
+      this.countdownEndsAt = now + this.timings.countdownMs;
+      this.idleSince = null;
+    }
+    this.broadcastRoomState(now);
+  }
+
   /** Queues a command for the next tick. Commands from players not in a match are ignored. */
   queueCommand(conn: Connection, seq: number, command: Command): void {
     const player = this.slotOf(conn);

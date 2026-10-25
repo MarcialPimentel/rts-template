@@ -279,3 +279,9 @@ input {
 #app {
   height: 100%;
 }
+
+.overlay .note {
+  color: var(--muted);
+  min-height: 1.2em;
+  margin: 12px 0 0;
+}

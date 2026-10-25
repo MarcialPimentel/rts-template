@@ -111,6 +111,48 @@ describe("RoomManager", () => {
     expect(a.last("match_end")).toEqual({ t: "match_end", winner: 0, reason: "forfeit" });
   });
 
+  it("starts a fresh match when both players ask for a rematch", () => {
+    const m = new RoomManager(TIMINGS);
+    const a = new FakeConn();
+    const b = new FakeConn();
+    const room = m.create(a, 0);
+    m.join(b, room.code, 0);
+    let now = advance(m, 0, 3000);
+    const hall = Object.values(room.world!.entities).find((e) => e.type === "town_hall" && e.owner === 1)!;
+    hall.hp = 0;
+    now = advance(m, now, 50);
+    expect(room.phase).toBe("ended");
+    const oldWorld = room.world;
+
+    room.requestRematch(a, now);
+    expect(room.phase).toBe("ended");
+    expect(b.last("room")).toMatchObject({ phase: "ended", rematch: [true, false] });
+
+    room.requestRematch(b, now);
+    expect(room.phase).toBe("countdown");
+    now = advance(m, now, 3000);
+    expect(room.phase).toBe("playing");
+    expect(room.world).not.toBe(oldWorld);
+    expect(room.world!.tick).toBeLessThan(5);
+    expect(room.rematch).toEqual([false, false]);
+  });
+
+  it("no rematch once the opponent has left", () => {
+    const m = new RoomManager(TIMINGS);
+    const a = new FakeConn();
+    const b = new FakeConn();
+    const room = m.create(a, 0);
+    m.join(b, room.code, 0);
+    let now = advance(m, 0, 3000);
+    Object.values(room.world!.entities).find((e) => e.type === "town_hall" && e.owner === 1)!.hp = 0;
+    now = advance(m, now, 50);
+    room.requestRematch(a, now);
+    m.leave(b, now, true);
+    expect(a.last("room")).toMatchObject({ phase: "ended", connected: [true, false], rematch: [false, false] });
+    room.requestRematch(a, now);
+    expect(room.phase).toBe("ended");
+  });
+
   it("deletes ended and empty rooms after 60 seconds", () => {
     const m = new RoomManager(TIMINGS);
     const a = new FakeConn();
