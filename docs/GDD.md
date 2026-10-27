@@ -1,6 +1,6 @@
 # RTS Template — Game Design Document
 
-Last updated 2026-10-25 · Owner: Marz
+Last updated 2026-10-27 · Owner: Marz
 
 > This file is the source of truth for the template. If it disagrees with any other copy (chat drafts, docs elsewhere), this file wins.
 
@@ -29,15 +29,17 @@ Any AI session working on this repo or a game built from it must:
 
 The PoC is done when two people on different networks, each in a browser, can play a full match from lobby to victory screen with responsive controls and both seeing the same result.
 
+**Status (2026-10-27):** done. Two full matches were played on the live build between different networks, including the 150 ms latency check.
+
 **Definition of done:**
 
-- [ ] Player 1 creates a room and gets a short room code; Player 2 joins with it.
-- [ ] Both players issue commands and see each other's units act on them.
-- [ ] Clicks are acknowledged instantly on screen, even at 150 ms round-trip latency.
-- [ ] Combat resolves identically for both players.
-- [ ] Destroying the enemy Town Hall ends the match with a win/lose screen for each player.
-- [ ] A player who disconnects for more than 30 seconds forfeits.
-- [ ] The client shows a clear message while the server wakes from sleep.
+- [x] Player 1 creates a room and gets a short room code; Player 2 joins with it.
+- [x] Both players issue commands and see each other's units act on them.
+- [x] Clicks are acknowledged instantly on screen, even at 150 ms round-trip latency.
+- [x] Combat resolves identically for both players.
+- [x] Destroying the enemy Town Hall ends the match with a win/lose screen for each player.
+- [x] A player who disconnects for more than 30 seconds forfeits.
+- [x] The client shows a clear message while the server wakes from sleep.
 
 **Out of scope for the PoC:** workers and harvesting, building placement, fog of war, more than two players, matchmaking, accounts, reconnection to a match in progress, client-side movement prediction, sound beyond click feedback, and art beyond simple shapes.
 
