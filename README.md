@@ -45,3 +45,5 @@ When starting an AI session on a new game, point it at this repo and `docs/GDD.m
 | Client | Canvas 2D, bundled with Vite, hosted as a Render static site |
 | Server | Node with `ws`, hosted as a Render free web service (Dockerfile included for other hosts) |
 | Tests | Vitest, run in GitHub Actions |
+
+**Live deploys are retired** (2026-10-27). The template isn't played on its own: its Render services are suspended, and its marz.gg page now belongs to [Another RTS](https://github.com/MarcialPimentel/another-rts). CI still runs on every push. To bring the deploys back, see "Deployment" in [docs/GDD.md](docs/GDD.md).

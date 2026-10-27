@@ -241,6 +241,17 @@ Both pieces deploy from `render.yaml` on every push to `main`: the client as a f
 | Game server | Render free web service (`rts-template-server`) | Sleeps after 15 minutes idle; waking takes about a minute |
 | Fallback server | Own PC plus a free tunnel, or a ~$5/month VPS | `deploy/Dockerfile`; only the server URL changes |
 
+**Status (2026-10-27): the template's live deploys are retired.** The template isn't played on its own. Another RTS (`MarcialPimentel/another-rts`), the first game built from it, took over the marz.gg/games/rts page and the SiteGround secrets. The setup above stays in the repo so every game copied from the template gets it. CI (typecheck, tests, build) still runs on every push.
+
+- **marz.gg upload:** the `SITEGROUND_*` secrets were removed from this repo, so `deploy-marz.yml` skips quietly.
+- **Render:** the `rts-template-server` and `rts-template-client` services are suspended.
+
+To bring them back:
+
+1. Resume both services in the Render dashboard (each service's Settings → Resume). They redeploy from `main`.
+2. Add the five `SITEGROUND_*` secrets back to this repo (Settings → Secrets and variables → Actions). Use a `SITEGROUND_PATH` that no game uses (for example `www/marz.gg/public_html/games/rts-template`). marz.gg/games/rts now belongs to Another RTS, and only one repo may deploy to each place.
+3. Push to `main` or re-run the "Deploy client to marz.gg" workflow, then check that the page and the server show the same build number.
+
 Rules:
 
 - The server URL MUST be a single config value (`VITE_SERVER_URL` at client build time), never hard-coded in game code.
@@ -305,6 +316,7 @@ Record every change to a Core rule here, newest first, with the reason.
 
 | Date | Decision | Reason |
 | --- | --- | --- |
+| 2026-10-27 | Template's live deploys retired: Render services suspended, SiteGround secrets moved to Another RTS, which now owns marz.gg/games/rts. The deploy setup stays in the repo for games to copy | The template isn't played on its own, and only one repo may deploy to each place |
 | 2026-10-25 | Client also published to marz.gg/games/rts from GitHub Actions over SSH; asset paths are relative so one build works at a root or in a subfolder | Wanted the game on the owner's own domain; the server stays on Render because shared hosting can't run it |
 | 2026-10-25 | Ready-up lobby with colour choice; players keep their own colour on both screens (was: local player always blue, opponent red); rooms return to the lobby after a match instead of a separate rematch step | Playtest feedback: seeing your own colour swapped on the other screen was confusing, and a lobby before the match was wanted |
 | 2026-10-25 | Leaving mid-match forfeits immediately; only dropped connections get the 30 s grace period | Nobody should wait 30 s for a player who chose to leave |
