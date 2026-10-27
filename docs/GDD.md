@@ -257,6 +257,7 @@ Rules:
 - The server URL MUST be a single config value (`VITE_SERVER_URL` at client build time), never hard-coded in game code.
 - Every build shows a build number (commit short hash) on the title screen, and the server reports its build number on connect. A client and server on different builds show a "please refresh" message instead of connecting.
 - The server answers `GET /healthz` for Render's health check.
+- The page (`index.html`) MUST NOT be cached by the host or browsers; hashed files in `assets/` may be cached forever. `client/public/.htaccess` sets this on SiteGround. Each marz.gg deploy keeps older assets for two weeks, so a page cached before a deploy still loads.
 
 ## Testing *(Core)*
 

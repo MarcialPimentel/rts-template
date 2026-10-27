@@ -64,5 +64,8 @@ jobs:
           fi
           SSH="ssh -i $HOME/.ssh/siteground -p 18765 -o StrictHostKeyChecking=accept-new"
           $SSH "$SG_USER@$SG_HOST" "mkdir -p '$SG_PATH'"
-          rsync -az --delete -e "$SSH" client/dist/ "$SG_USER@$SG_HOST:$SG_PATH/"
+          # Keep older assets (P = protect from --delete) so a page cached before this deploy still
+          # loads its scripts, then prune ones that are more than two weeks old.
+          rsync -az --delete --filter='P assets/*' -e "$SSH" client/dist/ "$SG_USER@$SG_HOST:$SG_PATH/"
+          $SSH "$SG_USER@$SG_HOST" "find '$SG_PATH/assets' -type f -mtime +14 -delete"
           echo "::notice::Published to $SG_PATH"
