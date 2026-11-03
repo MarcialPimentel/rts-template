@@ -31,3 +31,18 @@ Read `docs/GDD.md` in full. It is the source of truth. If a request conflicts wi
 - Add or update tests in `tests/` for any simulation or protocol change. `npm test` and `npm run typecheck` must pass before merging.
 - If a change affects anything the GDD describes, update `docs/GDD.md` in the same pull request.
 - If a task seems to require breaking a MUST rule, stop and explain why instead of working around it.
+
+## Ship and build notes
+
+_Read by the `ship`, `next-build` and `prod-run` skills, which keep no per-game notes of their own. Keep this section current when the deploy or build process changes._
+
+### Shipping (merge, deploy, live check)
+
+- **Default branch:** `main`. **Merge style:** squash.
+- **Deploy:** **none.** Live deploys are retired (its Render services are suspended and it has no SiteGround secrets). "CI" (`ci.yml`) still runs typecheck, tests and build; `deploy-marz.yml` runs but skips the upload.
+- **Live check:** none. Success = CI passes on the merge commit. Don't try to check marz.gg/games/rts, which belongs to another-rts now.
+- **Report:** say there's nothing to playtest live; changes reach games when they pull template updates. Mention any likely merge conflicts for games built from the template (e.g. both GDDs' Decision logs).
+
+### Planning and building the next build
+
+- **Finished at v1.0** and no longer deploys. New work is only core fixes that games need (usually requested from a game session). There's no "next build" to plan: say so, and list any open PRs or issues instead.
